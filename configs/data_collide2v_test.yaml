@@ -1,0 +1,39 @@
+ds_name: collide2v_test_smcocktail
+
+data_processing:
+  sample_dir: /collide/collide-1m
+  out_path: /collide/escheuller/double_disco/data/collide2v_test
+
+  # --- PF candidates view (contrastive training input) ---
+  pfcands: true
+  n_objects: 400
+  sort_by_pt: true
+  sk_spacing: null
+
+  # Classes are imbalanced (QCD/TT dominate) - weight the CE loss inversely to class frequency,
+  # matching the data config used for the best prior disco run (data_smcocktail.yaml).
+  class_weights: inv_freq
+
+  # --- AE object view (AE input) ---
+  also_save_objects: true
+
+  # --- dataset sizing: use every available event per class (no cap).
+  # Set well above the largest class total (QCD_HT50toInf: 100 files x ~9991 events =~ 999k)
+  # so the per-file "n_events_left <= 0" early-break never triggers before files run out.
+  nevents_per_class: 2000000
+
+  # --- outputs ---
+  split: 0.8
+  store_by_class: false
+
+  samples:
+    - DY:
+      - "DYJetsToLL_13TeV-madgraphMLM-pythia8/*.parquet"
+    - QCD:
+      - "QCD_HT50toInf/*.parquet"
+    - TT:
+      - "tt0123j_5f_ckm_LO_MLM_leptonic/*.parquet"
+      - "tt0123j_5f_ckm_LO_MLM_hadronic/*.parquet"
+      - "tt0123j_5f_ckm_LO_MLM_semiLeptonic/*.parquet"
+    - WJet:
+      - "WJetsToLNu_13TeV-madgraphMLM-pythia8/*.parquet"

@@ -1,0 +1,73 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: eval-double-disco-best-config-yet-20260721-224458
+  namespace: aida-scout
+spec:
+  backoffLimit: 0                         # don't auto-retry on failure
+  template:
+    spec:
+      restartPolicy: Never
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: nvidia.com/gpu.product
+                operator: In
+                values:
+                - NVIDIA-A100-SXM4-80GB
+      containers:
+        - name: eval
+          image: pytorch/pytorch:2.3.1-cuda12.1-cudnn8-runtime
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -e
+              echo "=== Job started: $(date) ==="
+              echo "Host: $(hostname)"
+
+              python -c "import torch; print('CUDA:', torch.cuda.is_available(), '| Device:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
+
+              # numpy/scipy/sklearn/matplotlib/wandb/pyyaml aren't in the base image - the dev
+              # pod's ephemeral /opt/conda install of these doesn't survive a pod restart (only
+              # the /collide PVC is persistent), so install them fresh every job run instead.
+              pip install --quiet numpy scipy scikit-learn matplotlib wandb pyyaml
+
+              cd /collide/escheuller/double_disco
+              export PYTHONPATH=src
+
+              python eval_abcd.py \
+                --contrast_ckpt    checkpoints/embedding_hlt_linformer_supcon_ce_best_encoder_20260721_224458.pth \
+                --contrast_test_pt data/collide2v_test/collide2v_test_smcocktail_test.pt \
+                --outdir           abcd_outputs/embedding_hlt_linformer_supcon_ce_best_20260721_224458 \
+                --n_pca            6 \
+                --wandb_run_name   embedding_hlt_linformer_supcon_ce_best_encoder_20260721_224458
+
+              echo "=== Job finished: $(date) ==="
+
+          env:
+            - name: WANDB_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: wandb-secret       # create with: kubectl create secret generic wandb-secret --from-literal=WANDB_API_KEY=<key> -n aida-scout
+                  key: WANDB_API_KEY
+
+          resources:
+            requests:
+              memory: "32Gi"
+              cpu: "8"
+              nvidia.com/a100: "1"
+            limits:
+              memory: "64Gi"
+              cpu: "16"
+              nvidia.com/a100: "1"
+
+          volumeMounts:
+            - name: collide
+              mountPath: /collide
+
+      volumes:
+        - name: collide
+          persistentVolumeClaim:
+            claimName: collide-1m

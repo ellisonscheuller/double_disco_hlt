@@ -1,17 +1,13 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: train-double-disco-mar25-mequinna
-  namespace: axol1tl
+  name: train-double-disco-collide2v-test-smcocktail
+  namespace: aida-scout
 spec:
-  backoffLimit: 0
+  backoffLimit: 0                         # don't auto-retry on failure
   template:
     spec:
       restartPolicy: Never
-      tolerations:
-        - key: "nautilus.io/issue"
-          operator: "Exists"
-          effect: "NoSchedule"
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -29,25 +25,32 @@ spec:
             - |
               set -e
               echo "=== Job started: $(date) ==="
-              export PYTHONPATH=/axovol/contrastive_axis/pylib:$PYTHONPATH
-              export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+              echo "Host: $(hostname)"
+
               python -c "import torch; print('CUDA:', torch.cuda.is_available(), '| Device:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
-              cd /axovol/contrastive_axis/modularized_nurd_hlt_con_ae
-              grep -vE 'torch|sympy' nrp/requirements_nrp.txt | pip install --quiet --target /axovol/contrastive_axis/pylib -r /dev/stdin
-              pip install --quiet --target /axovol/contrastive_axis/pylib -e . 2>/dev/null || true
-              cp -r /axovol/contrastive_axis/modularized_nurd_hlt_con_ae/src/embedding /axovol/contrastive_axis/pylib/
-              cp -r /axovol/contrastive_axis/modularized_nurd_hlt_con_ae/src/embedding_mar25 /axovol/contrastive_axis/pylib/
-              python train_mar25.py \
-                --train_cfg configs/train_sup_con_mar25_mequinna.yaml \
-                --data_cfg  configs/data_smcocktail.yaml \
-                --data      /axovol/contrastive_axis/data/hlt_smcocktail_mequinna_train.pt
+
+              # numpy/scipy/sklearn/matplotlib/wandb/pyyaml aren't in the base image - the dev
+              # pod's ephemeral /opt/conda install of these doesn't survive a pod restart (only
+              # the /collide PVC is persistent), so install them fresh every job run instead.
+              pip install --quiet numpy scipy scikit-learn matplotlib wandb pyyaml
+
+              cd /collide/escheuller/double_disco
+              export PYTHONPATH=src
+
+              python train_pca_per_batch.py \
+                --train_cfg configs/train_best_config_yet.yaml \
+                --data_cfg  configs/data_collide2v_test.yaml \
+                --data      data/collide2v_test/collide2v_test_smcocktail_train.pt
+
               echo "=== Job finished: $(date) ==="
+
           env:
             - name: WANDB_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: wandb-secret
+                  name: wandb-secret       # create with: kubectl create secret generic wandb-secret --from-literal=WANDB_API_KEY=<key> -n aida-scout
                   key: WANDB_API_KEY
+
           resources:
             requests:
               memory: "64Gi"
@@ -57,10 +60,12 @@ spec:
               memory: "128Gi"
               cpu: "16"
               nvidia.com/a100: "1"
+
           volumeMounts:
-            - name: axovol
-              mountPath: /axovol
+            - name: collide
+              mountPath: /collide
+
       volumes:
-        - name: axovol
+        - name: collide
           persistentVolumeClaim:
-            claimName: axovol
+            claimName: collide-1m

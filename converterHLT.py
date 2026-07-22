@@ -234,6 +234,68 @@ def process_pfcands(
 
     return torch.cat([tensor, label_tensor], dim=-1)
 
+def gather_objects_for_ae(tree: uproot.TTree, max_events: int = -1) -> ak.Array:
+    """Return per-event top-k typed objects (pt, eta, phi, type_id) for the frozen-AE branch (axis 1 of double DisCo)."""
+
+    def topk_pad(pt: ak.Array, eta: ak.Array, phi: ak.Array, type_id: int, k: int) -> ak.Array:
+        order = ak.argsort(pt, axis=1, ascending=False)
+        pt_s, eta_s, phi_s = pt[order], eta[order], phi[order]
+        pt_p = ak.pad_none(pt_s, k, axis=1, clip=True)
+        eta_p = ak.pad_none(eta_s, k, axis=1, clip=True)
+        phi_p = ak.pad_none(phi_s, k, axis=1, clip=True)
+        typ = ak.ones_like(pt_p) * type_id
+        return ak.zip({"pt": pt_p, "eta": eta_p, "phi": phi_p, "type": typ})
+
+    # type_id: 0=jet, 1=muon, 2=electron, 3=photon, 4=MET
+    jet_pt = tree["ScoutingPFJetRecluster_pt"].array(entry_stop=max_events)
+    jet_eta = tree["ScoutingPFJetRecluster_eta"].array(entry_stop=max_events)
+    jet_phi = tree["ScoutingPFJetRecluster_phi"].array(entry_stop=max_events)
+    jets = topk_pad(jet_pt, jet_eta, jet_phi, type_id=0, k=10)
+
+    mu_pt = tree["ScoutingMuonVtx_pt"].array(entry_stop=max_events)
+    mu_eta = tree["ScoutingMuonVtx_eta"].array(entry_stop=max_events)
+    mu_phi = tree["ScoutingMuonVtx_phi"].array(entry_stop=max_events)
+    muons = topk_pad(mu_pt, mu_eta, mu_phi, type_id=1, k=4)
+
+    e_pt = tree["ScoutingElectron_pt"].array(entry_stop=max_events)
+    e_eta = tree["ScoutingElectron_eta"].array(entry_stop=max_events)
+    e_phi = tree["ScoutingElectron_phi"].array(entry_stop=max_events)
+    electrons = topk_pad(e_pt, e_eta, e_phi, type_id=2, k=4)
+
+    g_pt = tree["ScoutingPhoton_pt"].array(entry_stop=max_events)
+    g_eta = tree["ScoutingPhoton_eta"].array(entry_stop=max_events)
+    g_phi = tree["ScoutingPhoton_phi"].array(entry_stop=max_events)
+    photons = topk_pad(g_pt, g_eta, g_phi, type_id=3, k=4)
+
+    met_pt = tree["ScoutingMET_pt"].array(entry_stop=max_events)
+    met_phi = tree["ScoutingMET_phi"].array(entry_stop=max_events)
+    met_eta = ak.zeros_like(met_pt)
+    met_pt, met_eta, met_phi = met_pt[:, np.newaxis], met_eta[:, np.newaxis], met_phi[:, np.newaxis]
+    met = ak.zip({"pt": met_pt, "eta": met_eta, "phi": met_phi, "type": ak.ones_like(met_pt) * 4})
+
+    return ak.concatenate([jets, muons, electrons, photons, met], axis=1)
+
+def process_objects_for_ae(combined: ak.Array) -> torch.Tensor:
+    """Returns an (N, 23, 4) float32 tensor: (pt, eta, phi, type_id) — the AE input for double DisCo's axis 1."""
+    array = np.stack(
+        [
+            ak.to_numpy(combined["pt"]),
+            ak.to_numpy(combined["eta"]),
+            ak.to_numpy(combined["phi"]),
+            ak.to_numpy(combined["type"]),
+        ],
+        axis=-1,
+    )
+    return torch.tensor(array, dtype=torch.float32)
+
+def save_dataset(out_file: Path, full_tensor: torch.Tensor, obj_tensor: Union[torch.Tensor, None] = None) -> None:
+    if obj_tensor is None:
+        torch.save(full_tensor, os.fspath(out_file))
+    else:
+        pf = full_tensor[..., :-1]
+        label = full_tensor[:, 0, -1].long()
+        torch.save({"pf": pf, "label": label, "obj": obj_tensor}, os.fspath(out_file))
+
 def main(cfg: data_config, overwrite: bool = False):
     """Convert one or more ROOT files to fixed-shape PyTorch tensors and save train/test splits."""
 
@@ -248,13 +310,16 @@ def main(cfg: data_config, overwrite: bool = False):
     sort_by_pt = cfg.get("sort_by_pt", True)
     store_by_class = cfg.get("store_by_class", False)
     split = cfg.get("split", None)
+    also_save_objects = cfg.get("also_save_objects", False)
     logger.info(f"PFCands mode: {pfcands}")
     logger.info(f"Soft-kill cell size: {sk_cell_size}")
+    logger.info(f"Also save AE object-level features: {also_save_objects}")
 
     if split and store_by_class:
         raise ValueError("Cannot use both split and store_by_class options at the same time.")
 
     tensors = {}
+    tensors_obj = {} if also_save_objects else None
     file_label_tuples = cfg.get_file_label_map()
     for entry in tqdm(file_label_tuples, desc="Processing files"):
         file_name, label = entry
@@ -279,21 +344,59 @@ def main(cfg: data_config, overwrite: bool = False):
             else:
                 pt, eta, phi, dxy, btag, has_dxy, has_btag = gather_particles(tree, max_events=n_events_left)
                 event_tensor = process_particles(
-                    pt, eta, phi, dxy, btag, has_dxy, has_btag, 
-                    label=label, 
+                    pt, eta, phi, dxy, btag, has_dxy, has_btag,
+                    label=label,
                     n_objects=n_objects,
-                )  
-                
+                )
+
+            if also_save_objects:
+                obj_tensor = process_objects_for_ae(gather_objects_for_ae(tree, max_events=n_events_left))
+                if obj_tensor.shape[0] != event_tensor.shape[0]:
+                    raise RuntimeError(f"Event count mismatch for label {label}: main tensor {event_tensor.shape[0]} vs obj tensor {obj_tensor.shape[0]}")
+                tensors_obj[label] = tensors_obj.get(label, []) + [obj_tensor]
+
             tensors[label] = tensors.get(label, []) + [event_tensor]
             n_events_left -= event_tensor.shape[0]
             if n_events_left <= 0:
                 break
-    
-    class_tensors = {label: torch.cat(chunks, dim=0) for label, chunks in tensors.items()}
+
+    assemble_and_save(
+        tensors, tensors_obj, cfg,
+        overwrite=overwrite,
+        also_save_objects=also_save_objects,
+        nevents_per_class=nevents_per_class,
+        split=split,
+        store_by_class=store_by_class,
+    )
+
+def assemble_and_save(
+        tensors: dict,
+        tensors_obj: Union[dict, None],
+        cfg: data_config,
+        overwrite: bool,
+        also_save_objects: bool,
+        nevents_per_class: int,
+        split,
+        store_by_class: bool,
+    ) -> None:
+    """Concatenate per-class chunks, shuffle (pf/label/obj kept aligned), and write output file(s)."""
+
+    # .pop() instead of .items() so each label's raw per-file chunks are freed the instant
+    # they're concatenated, instead of staying alive (referenced by main()'s `tensors` dict)
+    # for the rest of this function.
+    class_tensors = {}
+    for label in list(tensors.keys()):
+        class_tensors[label] = torch.cat(tensors.pop(label), dim=0)
+    class_tensors_obj = {}
+    if also_save_objects:
+        for label in list(tensors_obj.keys()):
+            class_tensors_obj[label] = torch.cat(tensors_obj.pop(label), dim=0)
 
     for label in class_tensors:
         if nevents_per_class > 0:
             class_tensors[label] = class_tensors[label][:nevents_per_class]
+            if also_save_objects:
+                class_tensors_obj[label] = class_tensors_obj[label][:nevents_per_class]
 
     total_num_events = sum(tensor.shape[0] for tensor in class_tensors.values())
     logger.info("Class event counts:")
@@ -301,8 +404,20 @@ def main(cfg: data_config, overwrite: bool = False):
         logger.info(f"  Label {label}: {class_tensors[label].shape[0]} events ({round(class_tensors[label].shape[0] / total_num_events * 100, 2)}%)")
 
     full_tensor = torch.cat([class_tensors[label] for label in class_tensors], dim=0)
-    full_tensor = torch.nan_to_num(full_tensor, nan=0.0, posinf=0.0, neginf=0.0)
-    full_tensor = full_tensor[torch.randperm(full_tensor.shape[0])] # Randomize order
+    class_tensors.clear()
+    full_tensor.nan_to_num_(nan=0.0, posinf=0.0, neginf=0.0)
+
+    full_obj_tensor = None
+    if also_save_objects:
+        full_obj_tensor = torch.cat([class_tensors_obj[label] for label in class_tensors_obj], dim=0)
+        class_tensors_obj.clear()
+        full_obj_tensor.nan_to_num_(nan=0.0, posinf=0.0, neginf=0.0)
+        logger.info(f"AE object feature tensor shape: {tuple(full_obj_tensor.shape)}")
+
+    perm = torch.randperm(full_tensor.shape[0]) # Randomize order
+    full_tensor = full_tensor[perm]
+    if also_save_objects:
+        full_obj_tensor = full_obj_tensor[perm]
 
     output_prefix = cfg.get_ds_name()
     if output_prefix == "":
@@ -322,7 +437,7 @@ def main(cfg: data_config, overwrite: bool = False):
             raise FileExistsError(f"Output files with prefix {output_prefix} already exist in {os.fspath(out_path)}. Use --overwrite to overwrite.")
         train_tensor = full_tensor[:split_idx]
         test_tensor = full_tensor[split_idx:]
-        
+
         n_events_per_class_train = torch.bincount(train_tensor[:, 0, -1].to(torch.int64))
         n_events_per_class_test = torch.bincount(test_tensor[:, 0, -1].to(torch.int64))
         logger.info("Train class event counts:")
@@ -332,24 +447,35 @@ def main(cfg: data_config, overwrite: bool = False):
         for i in range(len(n_events_per_class_test)):
             logger.info(f"  Label {i}: {n_events_per_class_test[i]} events ({round(n_events_per_class_test[i].item() / test_tensor.shape[0] * 100, 2)}%)")
 
-        torch.save(train_tensor, os.fspath(train_fname))
-        torch.save(test_tensor, os.fspath(test_fname))
+        if also_save_objects:
+            save_dataset(train_fname, train_tensor, full_obj_tensor[:split_idx])
+            save_dataset(test_fname, test_tensor, full_obj_tensor[split_idx:])
+        else:
+            torch.save(train_tensor, os.fspath(train_fname))
+            torch.save(test_tensor, os.fspath(test_fname))
     elif store_by_class:
         # One file per class
         label_name_map = cfg.get_label_name_map()
+        event_labels = full_tensor[:, 0, -1].to(torch.int64)
         for label, name in label_name_map.items():
             full_fname = out_path / f"{output_prefix}_{name}_testds.pt"
             if not overwrite and full_fname.exists():
                 raise FileExistsError(f"Output file with prefix {output_prefix}_{name}_testds.pt already exists in {os.fspath(out_path)}. Use --overwrite to overwrite.")
-            event_labels = full_tensor[:, 0, -1].to(torch.int64)
-            class_tensor = full_tensor[event_labels == int(label)]
-            torch.save(class_tensor, os.fspath(full_fname))
+            mask = event_labels == int(label)
+            class_tensor = full_tensor[mask]
+            if also_save_objects:
+                save_dataset(full_fname, class_tensor, full_obj_tensor[mask])
+            else:
+                torch.save(class_tensor, os.fspath(full_fname))
     else:
         # All classes mixed in one file
         full_fname = out_path / f"{output_prefix}.pt"
         if not overwrite and full_fname.exists():
             raise FileExistsError(f"Output file with prefix {output_prefix}.pt already exists in {os.fspath(out_path)}. Use --overwrite to overwrite.")
-        torch.save(full_tensor, os.fspath(full_fname))
+        if also_save_objects:
+            save_dataset(full_fname, full_tensor, full_obj_tensor)
+        else:
+            torch.save(full_tensor, os.fspath(full_fname))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -359,6 +485,7 @@ if __name__ == "__main__":
 
     cfg = data_config(args.config)
 
+    os.makedirs("logs", exist_ok=True)
     log_filename = f"logs/converterHLT_{cfg.get_ds_name()}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
     file_handler = logging.FileHandler(log_filename)
     file_handler.setLevel(logging.INFO)

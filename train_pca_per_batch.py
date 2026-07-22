@@ -176,7 +176,7 @@ def main(data_path: str, cfg: train_config, cfg_data: data_config, test_mode: bo
 
     # ── Model construction ─────────────────────────────────────────────────────
     # preproc: handles any input-level transformations (e.g. log-scaling pt)
-    preproc_class = getattr(importlib.import_module("embedding.preprocs"), preproc_type)
+    preproc_class = getattr(importlib.import_module("embedding_pca_epoch.preprocs"), preproc_type)
     preproc = preproc_class(norm_constants).to(device)
 
     # encoder (axis 2): Transformer over PF candidates → single event-level latent vector
@@ -204,7 +204,7 @@ def main(data_path: str, cfg: train_config, cfg_data: data_config, test_mode: bo
     class_weights = compute_class_weights(label_block, setting=class_weights_setting).to(device)
     ce_loss_fn = nn.CrossEntropyLoss(weight=class_weights)
     # Contrastive loss (InfoNCE by default): pulls same-class embeddings together, pushes different apart
-    contrast_loss_class = getattr(importlib.import_module("embedding_mar25.loss"), contrast_loss)
+    contrast_loss_class = getattr(importlib.import_module("embedding_pca_per_batch.loss"), contrast_loss)
     criterion = contrast_loss_class(temperature=contrast_temp)
 
     # ── Optimizer ─────────────────────────────────────────────────────────────

@@ -31,5 +31,5 @@ hyperparameters:
   closure_warmup: 0.2
   ae_reco_weight: 1.0
   ae_latent: 16
-  ae_enc_nodes: [256, 512]
-  ae_dec_nodes: [512, 256]
+  ae_enc_nodes: [512, 256]
+  ae_dec_nodes: [256, 512]

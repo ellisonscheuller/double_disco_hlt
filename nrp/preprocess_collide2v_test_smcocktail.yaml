@@ -1,0 +1,48 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: preprocess-collide2v-test-smcocktail
+  namespace: aida-scout   # TODO: confirm this is right namespace for the "collide" PVC (matches this dev pod's own namespace)
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: preprocess
+          # Reusing the same base image as the other NRP jobs in this repo (nrp/eval_mar25.yaml,
+          # nrp/train_job_mar25.yaml) since converterCollide.py imports torch even though this
+          # particular script is CPU-only (no GPU requested below).
+          image: pytorch/pytorch:2.3.1-cuda12.1-cudnn8-runtime
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -e
+              echo "=== Job started: $(date) ==="
+
+              # awkward/uproot/wandb/pyarrow/pyyaml aren't in the base image - the dev pod's
+              # ephemeral /opt/conda install of these doesn't survive a pod restart (only the
+              # /collide PVC is persistent), so install them fresh every job run instead.
+              pip install --quiet awkward uproot wandb pyarrow pyyaml
+
+              cd /collide/escheuller/double_disco
+              export PYTHONPATH=src
+              export WANDB_MODE=disabled
+
+              python converterCollide.py --config configs/data_collide2v_test.yaml
+
+              echo "=== Job finished: $(date) ==="
+          resources:
+            requests:
+              memory: "192Gi"
+              cpu: "8"
+            limits:
+              memory: "256Gi"
+              cpu: "16"
+          volumeMounts:
+            - name: collide
+              mountPath: /collide
+      volumes:
+        - name: collide
+          persistentVolumeClaim:
+            claimName: collide-1m
