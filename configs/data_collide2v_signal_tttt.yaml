@@ -1,0 +1,24 @@
+ds_name: collide2v_signal_tttt
+
+data_processing:
+  sample_dir: /collide/collide-1m
+  out_path: /collide/escheuller/double_disco/data/collide2v_signal
+
+  # --- PF candidates view (contrastive/NuRD input) - n_objects must match data_collide2v_test.yaml
+  # (400) since eval loads this alongside a checkpoint trained with that token count.
+  pfcands: true
+  n_objects: 400
+  sort_by_pt: true
+  sk_spacing: null
+
+  # --- AE object view (AE input) ---
+  also_save_objects: true
+
+  # only 2 files (~20k events) available for tttt_incl - use all of them
+  nevents_per_class: -1
+
+  # no split / store_by_class - signal-only, single output file (matches data_signal_TpTp.yaml)
+
+  samples:
+    - tttt:
+      - "tttt_incl/*.parquet"

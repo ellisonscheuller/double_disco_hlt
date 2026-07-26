@@ -101,13 +101,19 @@ def sigmoid_counts(var1, var2, cut1, cut2, weights, scale=100.0):
 
 
 def closure_loss_batch(var1, var2, weights, symmetrize=True,
-                       n_events_min=10, max_tries=20, scale=50.0, n_cuts=5):
+                       n_events_min=10, max_tries=20, scale=50.0, n_cuts=5,
+                       cut_beta_alpha=3.0):
     """
     ABCD closure loss on a batch.
     Normalizes both variables to their 1-99% quantile range (→ [0,1]) before
     computing soft ABCD counts, so the sigmoid scale is meaningful regardless
     of the variables' absolute scale (important when var2 is Mahalanobis distance).
     Averages over n_cuts random cuts to reduce gradient variance.
+    Cuts are drawn from Beta(cut_beta_alpha, 1), which skews toward 1 (mean
+    0.75 at alpha=3) so training probes the same high-percentile tail region
+    that eval_abcd.py's working-point scan uses (percentiles ~0.75-0.9995),
+    instead of wasting most steps on loose cuts that don't affect the ABCD
+    region actually reported at eval time.
     Returns mean of |NA*ND - NB*NC| / (NA*ND + NB*NC) over valid cuts.
     """
     v1 = var1.view(-1)
@@ -131,8 +137,8 @@ def closure_loss_batch(var1, var2, weights, symmetrize=True,
     for _ in range(n_cuts):
         for _ in range(max_tries):
             with torch.no_grad():
-                cut1 = np.random.uniform(0.0, 1.0)
-                cut2 = np.random.uniform(0.0, 1.0)
+                cut1 = np.random.beta(cut_beta_alpha, 1.0)
+                cut2 = np.random.beta(cut_beta_alpha, 1.0)
             NA, NB, NC, ND = sigmoid_counts(v1_n, v2_n, cut1, cut2, w, scale=scale)
             if (NA.item() > n_events_min and NB.item() > n_events_min and
                     NC.item() > n_events_min and ND.item() > n_events_min):

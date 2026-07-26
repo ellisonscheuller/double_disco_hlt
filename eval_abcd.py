@@ -65,6 +65,7 @@ _SIGNAL_DISPLAY_NAMES = {
     "VBF":      "VBF",
     "ttbar":    r"$t\bar{t}$",
     "TTbar":    r"$t\bar{t}$",
+    "tttt":     r"$t\bar{t}t\bar{t}$",
 }
 
 def _signal_display_name(label: str, pt_path: str = "") -> str:
@@ -479,12 +480,18 @@ def ABCD(config):
     min_A   = int(config.get("min_A", 50))
     min_D   = int(config.get("min_D", 500))
 
-    for p1 in percent:
-        for p2 in percent:
+    # nc_grid[i, j] = nonclosure at (p1=percent[i], p2=percent[j]); NaN where the
+    # min_A/min_D stats requirement failed, so the 2D scan plot below can show both
+    # the closure landscape and where it was masked out.
+    nc_grid = np.full((len(percent), len(percent)), np.nan)
+
+    for i, p1 in enumerate(percent):
+        for j, p2 in enumerate(percent):
             t1, t2, A, B, C, D = abcd_counts(axis1_qcd, axis2_qcd, p1, p2)
             if A < min_A or D < min_D:
                 continue
             nc, A_hat = nonclosure_A(A, B, C, D)
+            nc_grid[i, j] = nc
             if np.isfinite(nc) and abs(nc) < abs(best["nonclosure"]):
                 best.update(dict(p1=p1, p2=p2, t1=t1, t2=t2,
                                  A=A, B=B, C=C, D=D, A_hat=A_hat, nonclosure=nc))
@@ -512,6 +519,28 @@ def ABCD(config):
     # ─────────────────────────────────────────
     fs, fs_leg, fs_legend = 28, 24, 16
     fig_size   = (8, 6)
+
+    # 2D closure scan - full (p1, p2) grid, colored by |non-closure|, with the
+    # optimized working point marked. Blank cells failed the min_A/min_D stats cut.
+    fig, ax = plt.subplots(figsize=(7.5, 6.5))
+    pct_grid = np.clip(np.abs(nc_grid) * 100.0, 0.0, 100.0)
+    mesh = ax.pcolormesh(percent, percent, pct_grid.T, cmap="viridis_r",
+                          vmin=0.0, vmax=np.nanpercentile(pct_grid, 95), shading="auto")
+    cb = fig.colorbar(mesh, ax=ax)
+    cb.set_label("|Non-closure| (%)", fontsize=fs_leg)
+    ax.scatter([best["p1"]], [best["p2"]], marker="*", s=400, color="red",
+               edgecolor="black", linewidth=1.0, zorder=5,
+               label=f"Optimized: p1={best['p1']:.3f}, p2={best['p2']:.3f}\n"
+                     f"|non-closure|={100.0*abs(best['nonclosure']):.2f}%")
+    ax.set_xlabel("Percentile threshold, axis 1 (AE reco loss)", fontsize=fs_leg)
+    ax.set_ylabel("Percentile threshold, axis 2 (contrastive MD)", fontsize=fs_leg)
+    ax.set_title("ABCD closure scan (full grid)", fontsize=fs_leg)
+    ax.legend(loc="lower left", fontsize=12, framealpha=0.9)
+    fig.tight_layout()
+    out_scan2d = os.path.join(plot_dir, "closure_scan_2d.png")
+    fig.savefig(out_scan2d, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+    wandb.log({"Closure/scan_2d": wandb.Image(out_scan2d)})
 
     # 2D histogram
     fig = plt.figure(figsize=(6, 5))
@@ -888,12 +917,16 @@ def ABCD(config):
     plt.close(fig)
     wandb.log({"Profiles/contrastive_vs_AE_by_class": wandb.Image(p4_path)})
 
-    # 1D scan for closure + S/sqrt(B)
+    # 1D scan for closure + S/sqrt(B) - wider/looser range than the `percent` grid used
+    # for the ABCD working-point search above, so this diagnostic curve reaches into
+    # loose-cut territory (small p -> most events pass -> high efficiency) instead of
+    # stopping at p=0.75.
+    percent_plot = np.linspace(0.10, 0.9995, 80)
     effs, closure_ratio, closure_unc, s_over_sqrtb = [], [], [], []
     scan_t1, scan_t2 = [], []
     Ntot_bkg = float(len(axis1_qcd))
 
-    for p in percent:
+    for p in percent_plot:
         t1, t2, A, B, C, D = abcd_counts(axis1_qcd, axis2_qcd, p, p)
         A_hat  = (B * C) / max(D, 1e-8)
         ratio  = A_hat / max(A, 1e-8)

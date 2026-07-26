@@ -1,0 +1,44 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: preprocess-collide2v-signal-tttt
+  namespace: aida-scout
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: preprocess
+          # Same base image as the other converterCollide.py jobs (it imports torch even
+          # though this particular script is CPU-only, no GPU requested below).
+          image: pytorch/pytorch:2.3.1-cuda12.1-cudnn8-runtime
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -e
+              echo "=== Job started: $(date) ==="
+
+              pip install --quiet awkward uproot wandb pyarrow pyyaml
+
+              cd /collide/escheuller/double_disco
+              export PYTHONPATH=src
+              export WANDB_MODE=disabled
+
+              python converterCollide.py --config configs/data_collide2v_signal_tttt.yaml
+
+              echo "=== Job finished: $(date) ==="
+          resources:
+            requests:
+              memory: "16Gi"
+              cpu: "4"
+            limits:
+              memory: "32Gi"
+              cpu: "8"
+          volumeMounts:
+            - name: collide
+              mountPath: /collide
+      volumes:
+        - name: collide
+          persistentVolumeClaim:
+            claimName: collide-1m
