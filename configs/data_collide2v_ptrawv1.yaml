@@ -1,0 +1,63 @@
+# collide-1m-ptrawv1.0 -- melissa's fixed-sampling background subset (see
+# aidascoutrepo/configs/data/convert_collide_1m_ptrawv1.yaml for how this
+# subset's exact file list/event counts were pinned). Stage-1 regionized
+# output of aidascoutrepo's own converter (aida_scout.data.converters.
+# convert_collide2v_regionized), NOT the raw EOS foundational-model-dataset,
+# and NOT the same parquet layout as /collide/collide-1m either: every L1T_*
+# collection is a nested struct column there (not flat underscore-joined),
+# and the main candidate collection is L1T_PUPPIPart with pt/eta/phi/dxy/
+# dxysig/pdgId already derived (no L1T_PFCand at all) -- hence
+# candidate_schema: regionized below (see converterCollide.py's
+# COLLIDE2V_SCHEMAS for the full field-mapping this was read from directly
+# in aidascoutrepo's converters.py, not tested against real data). Backgrounds
+# only -- DY/QCD/TT/WJet, same 4-class grouping as data_collide2v_test.yaml
+# (TT's 3 EOS sub-samples merged into one class) -- signals excluded here
+# since NURD trains on backgrounds only.
+ds_name: collide2v_ptrawv1_0
+
+data_processing:
+  sample_dir: /collide2vsubset/collide-1m-ptrawv1.0
+  # escheuller/ (not aida-scout/) -- this is converterCollide.py's own output
+  # schema (7 pf columns, no pf_columns/obj_columns metadata), not
+  # aidascoutrepo's convert_data.py tensors -- keep the two apart on the PVC.
+  # Downloaded from here (via https://collide2vsubset.nrp-nautilus.io/escheuller/...)
+  # by the continuous_nuisance training job, which runs in a different
+  # namespace with no direct mount of this PVC.
+  out_path: /collide2vsubset/escheuller/collide2v_ptrawv1_0_tensors
+  candidate_schema: regionized
+
+  # --- PF candidates view (contrastive/NuRD input) ---
+  pfcands: true
+  # 512: matches aidascoutrepo's own measured A100 ceiling for this raw-pT
+  # selection (QCD runs ~500 candidates/event under candidate_selection_pt:
+  # raw -- see nurd_ptrawv1_100k.yaml's own comment), not the 400 used for
+  # /collide/collide-1m's older, lower-multiplicity candidate selection.
+  n_objects: 512
+  sort_by_pt: true
+  sk_spacing: null
+
+  # --- AE object view (AE input, both trainings share this frozen axis) ---
+  also_save_objects: true
+
+  # Stage-1 already wrote exactly one combined parquet file per sample
+  # (<out_path>/<sample>/<sample>.parquet) -- -1 loads that single file in
+  # full and the per-file early-break never triggers (only one file to
+  # process per class), unlike /collide/collide-1m's many-small-files layout
+  # where -1 would silently stop after the first file.
+  nevents_per_class: -1
+
+  # --- outputs: one shuffled train/test pair, mixed classes ---
+  split: 0.8
+  store_by_class: false
+
+  samples:
+    - DY:
+      - "DYJetsToLL_13TeV-madgraphMLM-pythia8/*.parquet"
+    - QCD:
+      - "QCD_HT50toInf/*.parquet"
+    - TT:
+      - "tt0123j_5f_ckm_LO_MLM_leptonic/*.parquet"
+      - "tt0123j_5f_ckm_LO_MLM_hadronic/*.parquet"
+      - "tt0123j_5f_ckm_LO_MLM_semiLeptonic/*.parquet"
+    - WJet:
+      - "WJetsToLNu_13TeV-madgraphMLM-pythia8/*.parquet"
