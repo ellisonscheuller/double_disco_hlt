@@ -1,0 +1,33 @@
+# collide-1m-ptrawv1.0 signal samples, eval-only -- same sample_dir/schema as
+# data_collide2v_ptrawv1.yaml (regionized, n_objects 512 must match so the
+# trained encoder's token count lines up), but signal-only: ttH_incl,
+# HH_bbgammagamma, tttt_incl. No split/store_by_class -- signal-only, single
+# output file (matches data_collide2v_signal_tttt.yaml's own convention for
+# the older /collide/collide-1m signal conversion).
+ds_name: collide2v_signal_ptrawv1_0
+
+data_processing:
+  sample_dir: /collide2vsubset/collide-1m-ptrawv1.0
+  out_path: /collide2vsubset/escheuller/collide2v_signal_ptrawv1_0
+
+  candidate_schema: regionized
+
+  # --- PF candidates view (contrastive/NuRD input) ---
+  pfcands: true
+  n_objects: 512
+  sort_by_pt: true
+  sk_spacing: null
+
+  # --- AE object view (AE input) ---
+  also_save_objects: true
+
+  # take every available event per signal process
+  nevents_per_class: -1
+
+  samples:
+    - ttH:
+      - "ttH_incl/*.parquet"
+    - HHbbgg:
+      - "HH_bbgammagamma/*.parquet"
+    - tttt:
+      - "tttt_incl/*.parquet"

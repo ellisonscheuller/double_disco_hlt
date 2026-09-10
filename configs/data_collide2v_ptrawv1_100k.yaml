@@ -1,9 +1,9 @@
 # collide-1m-ptrawv1.0, 100k-event subset -- same source/schema as
 # data_collide2v_ptrawv1.yaml (see that file's own header for the full
-# provenance), just capped to 25k events/class (DY/QCD/TT/WJet) instead of
-# nevents_per_class: -1 (all ~1m), for a faster A100 smoke run. ds_name/
-# out_path suffixed _100k so this doesn't collide with the full-dataset
-# tensors already on the PVC.
+# provenance and the 11-class scheme), just capped to ~9091 events/class
+# (11 classes) instead of nevents_per_class: -1 (all ~1m), for a faster A100
+# smoke run. ds_name/out_path suffixed _100k so this doesn't collide with the
+# full-dataset tensors already on the PVC.
 ds_name: collide2v_ptrawv1_0_100k
 
 data_processing:
@@ -20,8 +20,8 @@ data_processing:
   # --- AE object view (AE input, both trainings share this frozen axis) ---
   also_save_objects: true
 
-  # 25k/class * 4 classes (DY/QCD/TT/WJet) = 100k events total.
-  nevents_per_class: 25000
+  # 9091/class * 11 classes = 100001 events total (~100k).
+  nevents_per_class: 9091
 
   # --- outputs: one shuffled train/test pair, mixed classes ---
   split: 0.8
@@ -32,9 +32,21 @@ data_processing:
       - "DYJetsToLL_13TeV-madgraphMLM-pythia8/*.parquet"
     - QCD:
       - "QCD_HT50toInf/*.parquet"
-    - TT:
-      - "tt0123j_5f_ckm_LO_MLM_leptonic/*.parquet"
-      - "tt0123j_5f_ckm_LO_MLM_hadronic/*.parquet"
-      - "tt0123j_5f_ckm_LO_MLM_semiLeptonic/*.parquet"
-    - WJet:
+    - WJetsToLNu:
       - "WJetsToLNu_13TeV-madgraphMLM-pythia8/*.parquet"
+    - WJetsToQQ:
+      - "WJetsToQQ_13TeV-madgraphMLM-pythia8/*.parquet"
+    - ZJetsToQQ:
+      - "ZJetsToQQ_13TeV-madgraphMLM-pythia8/*.parquet"
+    - ZJetsTobb:
+      - "ZJetsTobb_13TeV-madgraphMLM-pythia8/*.parquet"
+    - ZJetsTocc:
+      - "ZJetsTocc_13TeV-madgraphMLM-pythia8/*.parquet"
+    - ZJetsTovv:
+      - "ZJetsTovv_13TeV-madgraphMLM-pythia8/*.parquet"
+    - TTHadronic:
+      - "tt0123j_5f_ckm_LO_MLM_hadronic/*.parquet"
+    - TTLeptonic:
+      - "tt0123j_5f_ckm_LO_MLM_leptonic/*.parquet"
+    - TTSemiLeptonic:
+      - "tt0123j_5f_ckm_LO_MLM_semiLeptonic/*.parquet"

@@ -10,9 +10,12 @@
 # candidate_schema: regionized below (see converterCollide.py's
 # COLLIDE2V_SCHEMAS for the full field-mapping this was read from directly
 # in aidascoutrepo's converters.py, not tested against real data). Backgrounds
-# only -- DY/QCD/TT/WJet, same 4-class grouping as data_collide2v_test.yaml
-# (TT's 3 EOS sub-samples merged into one class) -- signals excluded here
-# since NURD trains on backgrounds only.
+# only -- 11 separate classes, one per generator-level process directory
+# (DY/QCD/TT split into its 3 hadronic-content sub-processes/W+jets split into
+# LNu+QQ/Z+jets split into QQ+bb+cc+vv), NOT the old 4-class DY/QCD/TT/WJet
+# grouping -- signals excluded here since NURD trains on backgrounds only.
+# QCD kept at label index 1 so every --qcd_label 1 downstream (train/eval
+# scripts, job YAMLs) is unaffected by the class-count change.
 ds_name: collide2v_ptrawv1_0
 
 data_processing:
@@ -55,9 +58,21 @@ data_processing:
       - "DYJetsToLL_13TeV-madgraphMLM-pythia8/*.parquet"
     - QCD:
       - "QCD_HT50toInf/*.parquet"
-    - TT:
-      - "tt0123j_5f_ckm_LO_MLM_leptonic/*.parquet"
-      - "tt0123j_5f_ckm_LO_MLM_hadronic/*.parquet"
-      - "tt0123j_5f_ckm_LO_MLM_semiLeptonic/*.parquet"
-    - WJet:
+    - WJetsToLNu:
       - "WJetsToLNu_13TeV-madgraphMLM-pythia8/*.parquet"
+    - WJetsToQQ:
+      - "WJetsToQQ_13TeV-madgraphMLM-pythia8/*.parquet"
+    - ZJetsToQQ:
+      - "ZJetsToQQ_13TeV-madgraphMLM-pythia8/*.parquet"
+    - ZJetsTobb:
+      - "ZJetsTobb_13TeV-madgraphMLM-pythia8/*.parquet"
+    - ZJetsTocc:
+      - "ZJetsTocc_13TeV-madgraphMLM-pythia8/*.parquet"
+    - ZJetsTovv:
+      - "ZJetsTovv_13TeV-madgraphMLM-pythia8/*.parquet"
+    - TTHadronic:
+      - "tt0123j_5f_ckm_LO_MLM_hadronic/*.parquet"
+    - TTLeptonic:
+      - "tt0123j_5f_ckm_LO_MLM_leptonic/*.parquet"
+    - TTSemiLeptonic:
+      - "tt0123j_5f_ckm_LO_MLM_semiLeptonic/*.parquet"
