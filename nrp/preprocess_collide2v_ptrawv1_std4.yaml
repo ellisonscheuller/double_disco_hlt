@@ -1,0 +1,64 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: preprocess-collide2v-ptrawv1-std4
+  namespace: aida-scout
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: preprocess
+          # Same base image as preprocess_collide2v_test_smcocktail.yaml --
+          # converterCollide.py imports torch even though this is CPU-only
+          # (no GPU requested below).
+          image: pytorch/pytorch:2.3.1-cuda12.1-cudnn8-runtime
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -e
+              echo "=== Job started: $(date) ==="
+
+              pip install --quiet awkward uproot wandb pyarrow pyyaml
+
+              cd /collide/aida-scout/double_disco_hlt
+              export PYTHONPATH=src
+
+              BKG_TRAIN=/collide2vsubset/escheuller/collide2v_ptrawv1_std4/collide2v_ptrawv1_std4_train.pt
+              SIGNAL=/collide2vsubset/escheuller/collide2v_ptrawv1_std4/collide2v_ptrawv1_std4_tttt_signal.pt
+
+              if [ -f "$BKG_TRAIN" ]; then
+                echo "=== Reusing existing background tensors: $BKG_TRAIN ==="
+              else
+                echo "=== Converting backgrounds (QCD/TT/WJets/DY): $(date) ==="
+                python converterCollide.py --config configs/data_collide2v_ptrawv1_std4.yaml
+              fi
+
+              if [ -f "$SIGNAL" ]; then
+                echo "=== Reusing existing signal tensor: $SIGNAL ==="
+              else
+                echo "=== Converting signal (tttt_incl): $(date) ==="
+                python converterCollide.py --config configs/data_collide2v_ptrawv1_std4_tttt_signal.yaml
+              fi
+
+              echo "=== Job finished: $(date) ==="
+          resources:
+            requests:
+              memory: "192Gi"
+              cpu: "8"
+            limits:
+              memory: "256Gi"
+              cpu: "16"
+          volumeMounts:
+            - name: collide
+              mountPath: /collide
+            - name: collide2vsubset
+              mountPath: /collide2vsubset
+      volumes:
+        - name: collide
+          persistentVolumeClaim:
+            claimName: collide-1m
+        - name: collide2vsubset
+          persistentVolumeClaim:
+            claimName: collide2vsubset

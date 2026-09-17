@@ -1,0 +1,43 @@
+# collide-1m-ptrawv1.0 backgrounds, classic 4-class split (QCD/TT/WJets/DY,
+# TT's 3 EOS sub-samples merged into one class) -- same sample_dir/schema as
+# data_collide2v_ptrawv1_std4.yaml, but n_objects=400 (not 512) to match
+# train_collide2v_nurd.yaml's last known-good n_objects at batch_size=4096
+# on a single A100 -- data_collide2v_ptrawv1_std4.yaml's 512 (sized for the
+# 11-class ceiling, not needed for just these 4 classes) OOM'd
+# train_collide2v_ptrawv1_std4.yaml at that same batch size. Own ds_name/
+# out_path so this doesn't collide with the existing 512-object std4 tensors.
+# QCD listed first so it lands at label 0 -- pass --qcd_label 0 to train_hlt.py.
+ds_name: collide2v_ptrawv1_std4_n400
+
+data_processing:
+  sample_dir: /collide2vsubset/collide-1m-ptrawv1.0
+  out_path: /collide2vsubset/escheuller/collide2v_ptrawv1_std4_n400
+
+  candidate_schema: regionized
+
+  # --- PF candidates view (NuRD input) ---
+  pfcands: true
+  n_objects: 400
+  sort_by_pt: true
+  sk_spacing: null
+
+  # --- AE object view (AE input) ---
+  also_save_objects: true
+
+  nevents_per_class: -1
+
+  # --- one shuffled train/test pair, mixed classes ---
+  split: 0.8
+  store_by_class: false
+
+  samples:
+    - QCD:
+      - "QCD_HT50toInf/*.parquet"
+    - TT:
+      - "tt0123j_5f_ckm_LO_MLM_hadronic/*.parquet"
+      - "tt0123j_5f_ckm_LO_MLM_leptonic/*.parquet"
+      - "tt0123j_5f_ckm_LO_MLM_semiLeptonic/*.parquet"
+    - WJets:
+      - "WJetsToLNu_13TeV-madgraphMLM-pythia8/*.parquet"
+    - DY:
+      - "DYJetsToLL_13TeV-madgraphMLM-pythia8/*.parquet"

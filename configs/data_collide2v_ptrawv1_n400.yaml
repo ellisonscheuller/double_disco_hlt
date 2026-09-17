@@ -1,0 +1,55 @@
+# collide-1m-ptrawv1.0 -- melissa's fixed-sampling background subset, same
+# samples/schema as data_collide2v_ptrawv1.yaml, but n_objects=400 (not 512).
+# 512 is the measured ceiling for this raw-pT selection (~491-634
+# candidates/event across all 11 classes -- see data_collide2v_ptrawv1.yaml's
+# own comment) -- train_hlt_ptrawv1_converterCollide_a100_bs4096.yaml OOM'd
+# at that width and batch_size=4096 on a single A100. 400 truncates the
+# highest-multiplicity events' pT tail (sort_by_pt: true keeps the
+# highest-pT 400, same truncation direction as std4's n400 variant) rather
+# than resizing the batch -- own ds_name/out_path so this doesn't collide
+# with the existing 512-object tensors.
+ds_name: collide2v_ptrawv1_n400
+
+data_processing:
+  sample_dir: /collide2vsubset/collide-1m-ptrawv1.0
+  out_path: /collide2vsubset/escheuller/collide2v_ptrawv1_n400_tensors
+  candidate_schema: regionized
+
+  # --- PF candidates view (contrastive/NuRD input) ---
+  pfcands: true
+  n_objects: 400
+  sort_by_pt: true
+  sk_spacing: null
+
+  # --- AE object view (AE input, both trainings share this frozen axis) ---
+  also_save_objects: true
+
+  nevents_per_class: -1
+
+  # --- outputs: one shuffled train/test pair, mixed classes ---
+  split: 0.8
+  store_by_class: false
+
+  samples:
+    - DY:
+      - "DYJetsToLL_13TeV-madgraphMLM-pythia8/*.parquet"
+    - QCD:
+      - "QCD_HT50toInf/*.parquet"
+    - WJetsToLNu:
+      - "WJetsToLNu_13TeV-madgraphMLM-pythia8/*.parquet"
+    - WJetsToQQ:
+      - "WJetsToQQ_13TeV-madgraphMLM-pythia8/*.parquet"
+    - ZJetsToQQ:
+      - "ZJetsToQQ_13TeV-madgraphMLM-pythia8/*.parquet"
+    - ZJetsTobb:
+      - "ZJetsTobb_13TeV-madgraphMLM-pythia8/*.parquet"
+    - ZJetsTocc:
+      - "ZJetsTocc_13TeV-madgraphMLM-pythia8/*.parquet"
+    - ZJetsTovv:
+      - "ZJetsTovv_13TeV-madgraphMLM-pythia8/*.parquet"
+    - TTHadronic:
+      - "tt0123j_5f_ckm_LO_MLM_hadronic/*.parquet"
+    - TTLeptonic:
+      - "tt0123j_5f_ckm_LO_MLM_leptonic/*.parquet"
+    - TTSemiLeptonic:
+      - "tt0123j_5f_ckm_LO_MLM_semiLeptonic/*.parquet"
